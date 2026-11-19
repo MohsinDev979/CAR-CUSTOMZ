@@ -115,8 +115,23 @@ function metricUpdate(){const c=current();$('#heroCarName').textContent=c.name;$
 function paintOptions(){const host=$('#paintSwatches');host.innerHTML='';palette.forEach((col,i)=>{const b=document.createElement('button');b.className='swatch'+(col.toLowerCase()===state.paint.toLowerCase()?' selected':'');b.style.background=col;b.title='Paint '+(i+1);b.addEventListener('click',()=>{state.paint=col;paintOptions();rebuildCars();save()});host.appendChild(b)})}
 function wireChoiceGroup(id,key,attr){const host=$('#'+id);if(!host)return;host.querySelectorAll('.choice').forEach(b=>{b.classList.toggle('selected',b.dataset[attr]===String(state[key]));b.onclick=()=>{state[key]=b.dataset[attr];host.querySelectorAll('.choice').forEach(x=>x.classList.toggle('selected',x===b));rebuildCars();save()}})}
 function choices(){[['finishChoices','finish','finish'],['wheelChoices','wheel','wheel'],['bodyChoices','body','body'],['spoilerChoices','spoiler','spoiler'],['hoodChoices','hood','hood'],['splitterChoices','splitter','splitter'],['diffuserChoices','diffuser','diffuser'],['liveryChoices','livery','livery'],['glowChoices','underglowColor','glow'],['exhaustChoices','exhaust','exhaust'],['interiorChoices','interior','interior'],['brakeColorChoices','brakeColor','brake'],['tireChoices','tireCompound','tire']].forEach(x=>wireChoiceGroup(...x));$('#rimRange').value=state.wheelSize;$('#rimValue').textContent=state.wheelSize+' IN';$('#rideRange').value=state.ride;$('#rideValue').textContent=['RAISED','LOW','STREET','SLAMMED'][state.ride]||'LOW';$('#frontCamberRange').value=state.frontCamber;$('#frontCamberValue').textContent=state.frontCamber+'°';$('#rearCamberRange').value=state.rearCamber;$('#rearCamberValue').textContent=state.rearCamber+'°';$('#underglowToggle').checked=state.underglow;$('#glowStatus').textContent=state.underglow?'ON':'OFF'}
-function buildCollection(){const grid=$('#carGrid');grid.innerHTML='';configs.forEach((c,i)=>{const el=document.createElement('button');el.className='car-card'+(i===state.car?' selected':'');el.innerHTML='<div class="tag">'+c.type+'</div><div class="car-art">'+c.emoji+'</div><h3>'+c.name+'</h3><p>'+c.power+' HP · '+c.drive+' · '+c.top+' KM/H</p>';el.addEventListener('click',()=>selectCar(i));grid.appendChild(el)})}
-function selectCar(i){state.car=i;metricUpdate();buildCollection();rebuildCars();save();toast(current().name+' selected')}
+function carSilhouette(c,color){
+const profiles={
+hyper:'M25 77 L35 62 78 55 108 34 155 28 200 32 238 55 275 61 294 77 290 87 24 87Z',
+super:'M25 77 L38 62 75 57 103 32 158 25 207 33 240 54 279 60 295 77 290 87 24 87Z',
+jdm:'M24 77 L36 63 68 58 98 35 148 24 205 28 244 54 281 61 296 78 290 88 23 88Z',
+muscle:'M21 77 L32 59 73 57 99 39 145 32 185 36 220 54 278 59 297 76 291 88 22 88Z',
+sedan:'M22 77 L35 61 66 58 102 33 178 29 225 44 252 59 283 64 296 78 290 88 22 88Z',
+suv:'M22 78 L31 58 54 54 59 24 229 24 250 46 279 55 296 78 290 89 23 89Z',
+classic:'M22 77 Q30 59 63 57 L89 34 Q108 18 164 25 Q216 26 245 56 L281 62 296 78 290 88 22 88Z',
+formula:'M16 80 L45 71 72 66 103 56 131 47 164 49 191 60 252 63 299 77 291 85 18 85Z'
+};
+const d=profiles[c.shape]||profiles.hyper;
+return '<svg viewBox="0 0 320 112" aria-hidden="true"><defs><linearGradient id="paint-'+c.id+'" x1="0" x2="0" y1="0" y2="1"><stop stop-color="'+color+'"/><stop offset="1" stop-color="#111923"/></linearGradient></defs><path d="'+d+'" fill="url(#paint-'+c.id+')" stroke="#e7edf2" stroke-opacity=".55" stroke-width="2"/><path d="M110 40 L153 31 201 35 233 55 100 55Z" fill="#102b3e" stroke="#bcd3df" stroke-opacity=".45"/><circle cx="78" cy="82" r="20" fill="#080d14" stroke="#83939e" stroke-width="4"/><circle cx="78" cy="82" r="9" fill="#b8c4cb"/><circle cx="247" cy="82" r="20" fill="#080d14" stroke="#83939e" stroke-width="4"/><circle cx="247" cy="82" r="9" fill="#b8c4cb"/></svg>'
+}
+function buildPicker(){const host=$('#carPicker');if(!host)return;host.innerHTML='';configs.forEach((c,i)=>{const b=document.createElement('button');b.className='car-pick'+(i===state.car?' selected':'');b.innerHTML=carSilhouette(c,state.paint)+'<span>'+c.name+'</span>';b.addEventListener('click',()=>selectCar(i));host.appendChild(b)})}
+function buildCollection(){const grid=$('#carGrid');grid.innerHTML='';configs.forEach((c,i)=>{const el=document.createElement('button');el.className='car-card'+(i===state.car?' selected':'');el.innerHTML='<div class="tag">'+c.type+'</div><div class="car-art">'+carSilhouette(c,state.paint)+'</div><h3>'+c.name+'</h3><p>'+c.power+' HP · '+c.drive+' · '+c.top+' KM/H</p>';el.addEventListener('click',()=>selectCar(i));grid.appendChild(el)})}
+function selectCar(i){state.car=i;metricUpdate();buildCollection();buildPicker();rebuildCars();save();toast(current().name+' selected')}
 function mat(color,rough=.4,metal=.45){return new THREE.MeshStandardMaterial({color,roughness:rough,metalness:metal})}
 function box(parent,w,h,d,x,y,z,material,radius){const geo=radius?new THREE.BoxGeometry(w,h,d):new THREE.BoxGeometry(w,h,d);const m=new THREE.Mesh(geo,material);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m}
 
@@ -353,7 +368,7 @@ $('#installBtn').onclick=async()=>{if(installPrompt){installPrompt.prompt();awai
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;$('#installBtn').textContent='＋ INSTALL APP'});
 window.addEventListener('resize',resizeRenderers);
 }
-function boot(){paintOptions();choices();metricUpdate();buildCollection();installEvents();try{createGarageScene();}catch(err){$('#loading').innerHTML='<b>3D ENGINE UNAVAILABLE</b>Try a browser with WebGL enabled.';console.error(err)}if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/service-worker.js').catch(()=>{}));animate();if(state.showHud===false)$('#driveHUD').style.display='none'}
+function boot(){paintOptions();choices();metricUpdate();buildCollection();buildPicker();installEvents();try{createGarageScene();}catch(err){$('#loading').innerHTML='<b>3D ENGINE UNAVAILABLE</b>Try a browser with WebGL enabled.';console.error(err)}if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/service-worker.js').catch(()=>{}));animate();if(state.showHud===false)$('#driveHUD').style.display='none'}
 boot();
 </script>
 </body></html>
