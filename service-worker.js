@@ -1,4 +1,4 @@
-const CACHE_NAME = "car-customz-shell-v2";
+const CACHE_NAME = "car-customz-shell-v3";
 const APP_SHELL = ["/", "/index.html", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
