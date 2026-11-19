@@ -107,7 +107,7 @@ const state={car:0,paint:palette[0],finish:'gloss',wheel:'sport',wheelSize:20,bo
 const saved=(()=>{try{return JSON.parse(localStorage.getItem('cc-save')||'{}')}catch(e){return {}}})();
 Object.assign(state,saved);
 state.car=Math.min(Math.max(Number(state.car)||0,0),configs.length-1);
-let garageRenderer,driveRenderer,garageScene,driveScene,garageCamera,driveCamera,orbit,garageCar,driveCar,roadCurve,roadLength=0,trackGroup=null,clock=new THREE.Clock(),lastLapZ=0,elapsed=0,installPrompt=null;
+let garageRenderer,driveRenderer,garageScene,driveScene,garageCamera,driveCamera,orbit,garageCar,driveCar,roadCurve,roadLength=0,trackGroup=null,previousTrackProgress=0,clock=new THREE.Clock(),lastLapZ=0,elapsed=0,installPrompt=null;
 function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.classList.remove('show'),2300)}
 function save(){const out={};['car','paint','finish','wheel','wheelSize','body','ride','spoiler','hood','splitter','diffuser','livery','liveryColor','underglow','underglowColor','interior','interiorAccent','exhaust','frontCamber','rearCamber','brakeColor','tireCompound','graphicsQuality','engine','ratio','traction','suspension','brake','trans','units','track','autoRotate','performance','showHud'].forEach(k=>out[k]=state[k]);try{localStorage.setItem('cc-save',JSON.stringify(out))}catch(e){}}
 function current(){return configs[state.car]}
@@ -337,19 +337,99 @@ roadCurve=new THREE.CatmullRomCurve3(pts,true,"catmullrom",.16);roadLength=roadC
 const ground=new THREE.Mesh(new THREE.PlaneGeometry(180,180),mat(layout.ground,1,0));ground.rotation.x=-Math.PI/2;ground.position.y=-.12;trackGroup.add(ground);
 const road=new THREE.Mesh(roadGeometry(roadCurve,10),new THREE.MeshStandardMaterial({color:"#343c43",roughness:.9,metalness:.08,side:THREE.DoubleSide}));road.receiveShadow=true;trackGroup.add(road);
 const edge=new THREE.Mesh(roadGeometry(roadCurve,10.2),new THREE.MeshBasicMaterial({color:"#d6a84f",wireframe:false,transparent:true,opacity:.16,side:THREE.DoubleSide}));edge.position.y=.035;trackGroup.add(edge);
+const barrierMaterial=new THREE.MeshStandardMaterial({color:"#b7c3cc",roughness:.62,metalness:.38,side:THREE.DoubleSide});
+const barrierTopMaterial=mat("#e9b85d",.36,.62);
+for(const sideSign of [-1,1]){
+  const samples=240,topPoints=[],positions=[],indices=[];
+  for(let i=0;i<=samples;i++){
+    const t=i/samples,p=roadCurve.getPointAt(t),tan=roadCurve.getTangentAt(t).normalize();
+    const normal=new THREE.Vector3(-tan.z,0,tan.x);
+    const q=p.addScaledVector(normal,sideSign*5.15);
+    topPoints.push(new THREE.Vector3(q.x,.92,q.z));
+    positions.push(q.x,.05,q.z,q.x,.92,q.z);
+    if(i<samples){const a=i*2;indices.push(a,a+2,a+1,a+1,a+2,a+3)}
+  }
+  const wallGeo=new THREE.BufferGeometry();
+  wallGeo.setAttribute("position",new THREE.Float32BufferAttribute(positions,3));
+  wallGeo.setIndex(indices);wallGeo.computeVertexNormals();
+  const wall=new THREE.Mesh(wallGeo,barrierMaterial);wall.receiveShadow=true;wall.castShadow=true;trackGroup.add(wall);
+  const railCurve=new THREE.CatmullRomCurve3(topPoints,true);
+  const rail=new THREE.Mesh(new THREE.TubeGeometry(railCurve,samples,.13,8,true),barrierTopMaterial);rail.castShadow=true;trackGroup.add(rail);
+  for(let i=0;i<samples;i+=12){
+    const p=topPoints[i],post=new THREE.Mesh(new THREE.BoxGeometry(.16,.98,.16),mat("#8997a1",.55,.52));
+    post.position.set(p.x,.47,p.z);trackGroup.add(post);
+  }
+}
 for(let i=0;i<180;i++){const t=i/180,p=roadCurve.getPointAt(t),tan=roadCurve.getTangentAt(t),side=new THREE.Vector3(-tan.z,0,tan.x);if(i%3===0){const mark=new THREE.Mesh(new THREE.BoxGeometry(.15,.035,1.1),new THREE.MeshBasicMaterial({color:"#c5c8c3"}));mark.position.copy(p).add(new THREE.Vector3(0,.07,0));mark.rotation.y=Math.atan2(tan.x,tan.z);trackGroup.add(mark)}if(i%9===0){for(let sideIndex of [-1,1]){const q=p.clone().addScaledVector(side,sideIndex*7.3);const post=new THREE.Mesh(new THREE.CylinderGeometry(.08,.12,1.2,8),mat("#a4b1b7",.55,.5));post.position.set(q.x,.55,q.z);trackGroup.add(post);const lamp=new THREE.Mesh(new THREE.SphereGeometry(.1,8,8),new THREE.MeshBasicMaterial({color:"#e7b75e"}));lamp.position.set(q.x,1.3,q.z);trackGroup.add(lamp)}}}
 for(let i=0;i<20;i++){const a=i*Math.PI/10;if(state.track===2){const h=7+(i%4)*3;const building=new THREE.Mesh(new THREE.BoxGeometry(4,h,5),mat(i%2?"#34495b":"#26384a",.72,.28));building.position.set(Math.cos(a)*49,h/2,Math.sin(a)*39);trackGroup.add(building)}else{const tree=new THREE.Group();const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.12,.18,1.6,7),mat("#4c4031"));trunk.position.y=.8;tree.add(trunk);const top=new THREE.Mesh(new THREE.ConeGeometry(state.track===1?.58:.85,state.track===1?1.9:2.6,7),mat(layout.foliage,1,0));top.position.y=state.track===1?2.3:2.65;tree.add(top);tree.position.set(Math.cos(a)*48,0,Math.sin(a)*36);trackGroup.add(tree)}}
 const start=new THREE.Mesh(new THREE.BoxGeometry(10,.06,.65),new THREE.MeshBasicMaterial({color:"#f4f3e7"}));start.position.set(0,.1,26*layout.sz);trackGroup.add(start);
 }
-function createDriveScene(){driveScene=new THREE.Scene();driveScene.background=new THREE.Color('#91a7aa');driveScene.fog=new THREE.Fog('#91a7aa',65,125);addLights(driveScene);createTrack(driveScene);driveCamera=new THREE.PerspectiveCamera(65,1,.1,220);driveCamera.position.set(0,7,12);driveRenderer=new THREE.WebGLRenderer({canvas:$('#driveCanvas'),antialias:true,alpha:false});driveRenderer.setPixelRatio(Math.min(devicePixelRatio,state.performance?1:1.5));driveRenderer.shadowMap.enabled=true;driveRenderer.outputColorSpace=THREE.SRGBColorSpace;driveRenderer.toneMapping=THREE.ACESFilmicToneMapping;driveRenderer.toneMappingExposure=1;driveCar=createVehicle(current());driveScene.add(driveCar);const carLight=new THREE.PointLight('#ffffff',18,7);carLight.position.set(0,2,2);driveCar.add(carLight);driveCar.position.copy(roadCurve.getPointAt(0));driveCar.position.y=.08;const t=roadCurve.getTangentAt(0);driveCar.rotation.y=Math.atan2(t.x,t.z);resizeRenderers()}
+function createDriveScene(){driveScene=new THREE.Scene();driveScene.background=new THREE.Color('#91a7aa');driveScene.fog=new THREE.Fog('#91a7aa',65,125);addLights(driveScene);createTrack(driveScene);driveCamera=new THREE.PerspectiveCamera(65,1,.1,220);driveCamera.position.set(0,7,12);driveRenderer=new THREE.WebGLRenderer({canvas:$('#driveCanvas'),antialias:true,alpha:false});driveRenderer.setPixelRatio(Math.min(devicePixelRatio,state.performance?1:1.5));driveRenderer.shadowMap.enabled=true;driveRenderer.outputColorSpace=THREE.SRGBColorSpace;driveRenderer.toneMapping=THREE.ACESFilmicToneMapping;driveRenderer.toneMappingExposure=1;driveCar=createVehicle(current());driveScene.add(driveCar);const carLight=new THREE.PointLight('#ffffff',18,7);carLight.position.set(0,2,2);driveCar.add(carLight);driveCar.position.copy(roadCurve.getPointAt(0));driveCar.position.y=.08;const t=roadCurve.getTangentAt(0);driveCar.rotation.y=Math.atan2(t.x,t.z);previousTrackProgress=0;resizeRenderers()}
 function resizeRenderers(){if(garageRenderer){const el=$('#scene'),w=el.clientWidth,h=el.clientHeight;if(w&&h){garageRenderer.setSize(w,h,false);garageCamera.aspect=w/h;garageCamera.updateProjectionMatrix()}}if(driveRenderer){const el=$('#driveCanvas'),w=el.clientWidth,h=el.clientHeight;if(w&&h){driveRenderer.setSize(w,h,false);driveCamera.aspect=w/h;driveCamera.updateProjectionMatrix()}}}
 function switchView(v){state.view=v;$$('.view').forEach(el=>el.classList.toggle('active',el.id===v+'-view'));$$('.navbtn').forEach(el=>el.classList.toggle('active',el.dataset.view===v));if(v==='drive'){if(!driveRenderer)createDriveScene();$('#driveTrackLabel').textContent=['COASTLINE CIRCUIT','DESERT RUN','NIGHT CITY LOOP'][state.track]+' · LAP '+state.lap;resizeRenderers();state.paused=false}else if(v==='garage'){resizeRenderers()}else if(v==='collection'){buildCollection()}save()}
-function runPhysics(dt){if(!driveCar||state.paused)return;const cfg=current(),maxSpeed=cfg.max*(state.engine/100)*(.85+state.ratio/330);const acc=state.throttle?27*(state.engine/100):0;const brake=state.braking?42*(state.brake/70):0;state.speed+=acc*dt;state.speed-=Math.max(0,brake)*dt;state.speed-=state.speed*(state.throttle ? 0.014 : 0.065)*dt;state.speed=THREE.MathUtils.clamp(state.speed,0,maxSpeed);const speedNorm=state.speed/Math.max(1,maxSpeed);let steer=(state.turnLeft?-1:0)+(state.turnRight?1:0);const steerStrength=(.15+speedNorm*.9)*(state.suspension/55)*(.55+state.traction/220);state.steer=THREE.MathUtils.lerp(state.steer,steer*steerStrength,Math.min(1,dt*5));driveCar.rotation.y+=state.steer*dt*(.4+speedNorm*1.45);const forward=new THREE.Vector3(Math.sin(driveCar.rotation.y),0,Math.cos(driveCar.rotation.y));driveCar.position.addScaledVector(forward,state.speed/3.6*dt);driveCar.position.y=.08+Math.sin(elapsed*9)*.012*speedNorm;driveCar.userData.wheels?.forEach(w=>{w.rotation.x+=state.speed/3.6*dt*2.6});
-const pos=driveCar.position;const radial=Math.sqrt(pos.x*pos.x/(34*34)+pos.z*pos.z/(26*26));if(radial>1.65){state.speed*=.94;driveCar.position.multiplyScalar(.99)}
-if(pos.z>24&&lastLapZ<0&&Math.abs(pos.x)<8){state.lap++;$('#driveTrackLabel').textContent='COASTLINE CIRCUIT · LAP '+state.lap}lastLapZ=pos.z;
-if(state.trans==='auto'){state.gear=Math.max(1,Math.min(7,Math.ceil(state.speed/48)+1))}else if(state.speed<5)state.gear=1;
-const speedValue=state.units==='mph'?Math.round(state.speed*.621371):Math.round(state.speed);$('#speedHUD').textContent=String(speedValue).padStart(3,'0');$('#gearDisplay').textContent=state.gear;$('#rpmDisplay').textContent=Math.round(1000+speedNorm*5900)+' RPM';
-const target=driveCar.position.clone().add(new THREE.Vector3(-forward.x*8,4.2,-forward.z*8));if(state.camera===0){driveCamera.position.lerp(target,Math.min(1,dt*3));driveCamera.lookAt(driveCar.position.clone().add(new THREE.Vector3(0,1,0)))}else if(state.camera===1){driveCamera.position.copy(driveCar.position).add(new THREE.Vector3(0,1.25,0));driveCamera.lookAt(driveCar.position.clone().add(forward.clone().multiplyScalar(20)).add(new THREE.Vector3(0,.6,0)))}else{driveCamera.position.lerp(target.clone().add(new THREE.Vector3(0,8,8)),Math.min(1,dt));driveCamera.lookAt(driveCar.position)}}
+function nearestTrackFrame(position){
+  const steps=420;let bestDist=Infinity,bestPoint=null,bestTangent=null,bestProgress=0;
+  for(let i=0;i<steps;i++){
+    const t0=i/steps,t1=(i+1)/steps;
+    const a=roadCurve.getPointAt(t0),b=roadCurve.getPointAt(t1);
+    const ab=b.clone().sub(a);const denom=ab.lengthSq()||1;
+    const u=THREE.MathUtils.clamp(position.clone().sub(a).dot(ab)/denom,0,1);
+    const q=a.clone().addScaledVector(ab,u);
+    const dist=position.distanceToSquared(q);
+    if(dist<bestDist){bestDist=dist;bestPoint=q;bestTangent=ab.normalize();bestProgress=(i+u)/steps}
+  }
+  const side=new THREE.Vector3(-bestTangent.z,0,bestTangent.x).normalize();
+  const lateral=position.clone().sub(bestPoint).dot(side);
+  return {point:bestPoint,tangent:bestTangent,side,lateral,progress:bestProgress,distance:Math.sqrt(bestDist)};
+}
+function shortestAngle(a,b){return Math.atan2(Math.sin(a-b),Math.cos(a-b))}
+function runPhysics(dt){
+  if(!driveCar||state.paused||!roadCurve)return;
+  const cfg=current(),maxSpeed=cfg.max*(state.engine/100)*(.82+state.ratio/360);
+  const compoundGrip={street:.72,sport:1,semi:1.13,slick:1.22}[state.tireCompound]||1;
+  const acc=state.throttle?31*(state.engine/100):0;
+  const brake=state.braking?52*(state.brake/70):0;
+  state.speed+=acc*dt;state.speed-=Math.max(0,brake)*dt;
+  state.speed-=state.speed*(state.throttle?.012:.052)*dt;
+  state.speed=THREE.MathUtils.clamp(state.speed,0,maxSpeed);
+  const speedNorm=state.speed/Math.max(1,maxSpeed);
+  const steer=(state.turnLeft?-1:0)+(state.turnRight?1:0);
+  const steerStrength=(.28+speedNorm*.98)*(state.suspension/55)*(.55+state.traction/220)*compoundGrip;
+  state.steer=THREE.MathUtils.lerp(state.steer,steer*steerStrength,Math.min(1,dt*7));
+  driveCar.rotation.y+=state.steer*dt*(.48+speedNorm*1.55);
+  const forward=new THREE.Vector3(Math.sin(driveCar.rotation.y),0,Math.cos(driveCar.rotation.y));
+  driveCar.position.addScaledVector(forward,state.speed/3.6*dt);
+  driveCar.position.y=.08+Math.sin(elapsed*9)*.012*speedNorm;
+  driveCar.userData.wheels?.forEach(w=>{w.rotation.x+=state.speed/3.6*dt*2.6});
+
+  // Physical track limits: the car is kept inside the barrier walls.
+  const frame=nearestTrackFrame(driveCar.position);
+  const safeOffset=4.06;
+  if(Math.abs(frame.lateral)>safeOffset){
+    driveCar.position.copy(frame.point).addScaledVector(frame.side,Math.sign(frame.lateral)*safeOffset);
+    const trackYaw=Math.atan2(frame.tangent.x,frame.tangent.z);
+    driveCar.rotation.y=trackYaw+THREE.MathUtils.clamp(shortestAngle(driveCar.rotation.y,trackYaw),-.48,.48)*.22;
+    state.speed*=.72;
+    state.steer*=.35;
+  }
+  const progressFrame=nearestTrackFrame(driveCar.position);
+  if(previousTrackProgress>.84&&progressFrame.progress<.16){
+    state.lap++;$('#driveTrackLabel').textContent=['COASTLINE CIRCUIT','DESERT RUN','NIGHT CITY LOOP'][state.track]+' · LAP '+state.lap;
+  }
+  previousTrackProgress=progressFrame.progress;
+
+  if(state.trans==='auto')state.gear=Math.max(1,Math.min(7,Math.ceil(state.speed/48)+1));
+  else if(state.speed<5)state.gear=1;
+  const speedValue=state.units==='mph'?Math.round(state.speed*.621371):Math.round(state.speed);
+  $('#speedHUD').textContent=String(speedValue).padStart(3,'0');
+  $('#gearDisplay').textContent=state.gear;
+  $('#rpmDisplay').textContent=Math.round(1000+speedNorm*5900)+' RPM';
+
+  const target=driveCar.position.clone().add(new THREE.Vector3(-forward.x*8,4.2,-forward.z*8));
+  if(state.camera===0){driveCamera.position.lerp(target,Math.min(1,dt*3));driveCamera.lookAt(driveCar.position.clone().add(new THREE.Vector3(0,1,0)))}
+  else if(state.camera===1){driveCamera.position.copy(driveCar.position).add(new THREE.Vector3(0,1.25,0));driveCamera.lookAt(driveCar.position.clone().add(forward.clone().multiplyScalar(20)).add(new THREE.Vector3(0,.6,0)))}
+  else{driveCamera.position.lerp(target.clone().add(new THREE.Vector3(0,8,8)),Math.min(1,dt));driveCamera.lookAt(driveCar.position)}
+}
 function animate(){requestAnimationFrame(animate);const dt=Math.min(.05,clock.getDelta());elapsed+=dt;if(garageRenderer&&garageScene){if(state.autoRotate&&state.view==='garage'&&garageCar)garageCar.rotation.y+=dt*.22;orbit?.update();garageRenderer.render(garageScene,garageCamera)}if(driveRenderer&&driveScene){runPhysics(dt);driveRenderer.render(driveScene,driveCamera)}}
 function setRange(id,key,label,formatter){const el=$(id);el.value=state[key];const upd=()=>{state[key]=Number(el.value);$(label).textContent=formatter(state[key]);if(key==='engine'||key==='ratio')metricUpdate();save()};el.addEventListener('input',upd);upd()}
 function installEvents(){
@@ -360,7 +440,7 @@ setRange('#engineTune','engine','#engineTuneValue',v=>v+'%');setRange('#gearTune
 $$('#transmissionChoices .choice').forEach(b=>b.onclick=()=>{state.trans=b.dataset.trans;$$('#transmissionChoices .choice').forEach(x=>x.classList.toggle('selected',x===b));$('#settingsTransmission').value=state.trans;save()});
 $('#settingsTransmission').value=state.trans;$('#settingsTransmission').onchange=e=>{state.trans=e.target.value;$$('#transmissionChoices .choice').forEach(x=>x.classList.toggle('selected',x.dataset.trans===state.trans));save()};$('#unitsSelect').value=state.units;$('#unitsSelect').onchange=e=>{state.units=e.target.value;save()};$('#sensitivitySelect').onchange=e=>{state.sensitivity=e.target.value;save()};
 $('#autoRotateToggle').checked=state.autoRotate;$('#autoRotateToggle').onchange=e=>{state.autoRotate=e.target.checked;save()};$('#performanceToggle').checked=state.performance;$('#performanceToggle').onchange=e=>{state.performance=e.target.checked;if(garageRenderer)garageRenderer.setPixelRatio(Math.min(devicePixelRatio,state.performance?1:1.65));if(driveRenderer)driveRenderer.setPixelRatio(Math.min(devicePixelRatio,state.performance?1:1.5));save()};$('#hudToggle').checked=state.showHud;$('#hudToggle').onchange=e=>{$('#driveHUD').style.display=e.target.checked?'block':'none';state.showHud=e.target.checked;save()};
-$('#trackBtn').onclick=()=>{state.track=(state.track+1)%3;createTrack(driveScene);driveCar.position.copy(roadCurve.getPointAt(0));const tangent=roadCurve.getTangentAt(0);driveCar.rotation.y=Math.atan2(tangent.x,tangent.z);state.speed=0;state.lap=1;lastLapZ=0;const names=['COASTLINE CIRCUIT','DESERT RUN','NIGHT CITY LOOP'];$('#trackBtn').textContent='TRACK · '+['COASTLINE','DESERT','CITY'][state.track];$('#driveTrackLabel').textContent=names[state.track]+' · LAP 1';save();toast(names[state.track]+' loaded')};$('#downshiftBtn').onclick=()=>{if(state.trans==='manual')state.gear=Math.max(1,state.gear-1);else toast('Select manual transmission to shift')};$('#upshiftBtn').onclick=()=>{if(state.trans==='manual')state.gear=Math.min(7,state.gear+1);else toast('Select manual transmission to shift')};$('#cameraBtn').onclick=()=>{state.camera=(state.camera+1)%3;$('#cameraBtn').textContent='CAMERA · '+['CHASE','COCKPIT','CINEMATIC'][state.camera]};$('#pauseBtn').onclick=()=>{state.paused=!state.paused;$('#pauseBtn').textContent=state.paused?'▶ RESUME':'Ⅱ PAUSE'};
+$('#trackBtn').onclick=()=>{state.track=(state.track+1)%3;createTrack(driveScene);driveCar.position.copy(roadCurve.getPointAt(0));const tangent=roadCurve.getTangentAt(0);driveCar.rotation.y=Math.atan2(tangent.x,tangent.z);state.speed=0;state.lap=1;previousTrackProgress=0;lastLapZ=0;const names=['COASTLINE CIRCUIT','DESERT RUN','NIGHT CITY LOOP'];$('#trackBtn').textContent='TRACK · '+['COASTLINE','DESERT','CITY'][state.track];$('#driveTrackLabel').textContent=names[state.track]+' · LAP 1';save();toast(names[state.track]+' loaded')};$('#downshiftBtn').onclick=()=>{if(state.trans==='manual')state.gear=Math.max(1,state.gear-1);else toast('Select manual transmission to shift')};$('#upshiftBtn').onclick=()=>{if(state.trans==='manual')state.gear=Math.min(7,state.gear+1);else toast('Select manual transmission to shift')};$('#cameraBtn').onclick=()=>{state.camera=(state.camera+1)%3;$('#cameraBtn').textContent='CAMERA · '+['CHASE','COCKPIT','CINEMATIC'][state.camera]};$('#pauseBtn').onclick=()=>{state.paused=!state.paused;$('#pauseBtn').textContent=state.paused?'▶ RESUME':'Ⅱ PAUSE'};
 $$('[data-control]').forEach(b=>{const key=b.dataset.control;const on=e=>{e.preventDefault();state[key==='left'?'turnLeft':key==='right'?'turnRight':key==='throttle'?'throttle':'braking']=true;b.classList.add('pressed')};const off=e=>{e.preventDefault();state[key==='left'?'turnLeft':key==='right'?'turnRight':key==='throttle'?'throttle':'braking']=false;b.classList.remove('pressed')};b.addEventListener('pointerdown',on);['pointerup','pointercancel','pointerleave'].forEach(ev=>b.addEventListener(ev,off))});
 window.addEventListener('keydown',e=>{if(['ArrowUp','w','W'].includes(e.key))state.throttle=true;if(['ArrowDown','s','S'].includes(e.key))state.braking=true;if(['ArrowLeft','a','A'].includes(e.key))state.turnLeft=true;if(['ArrowRight','d','D'].includes(e.key))state.turnRight=true;if(e.key==='Shift'&&state.trans==='manual')state.gear=Math.min(7,state.gear+1);if(e.key==='Control'&&state.trans==='manual')state.gear=Math.max(1,state.gear-1)});window.addEventListener('keyup',e=>{if(['ArrowUp','w','W'].includes(e.key))state.throttle=false;if(['ArrowDown','s','S'].includes(e.key))state.braking=false;if(['ArrowLeft','a','A'].includes(e.key))state.turnLeft=false;if(['ArrowRight','d','D'].includes(e.key))state.turnRight=false});
 $('#clearData').onclick=()=>{if(confirm('Reset all local CAR CUSTOMZ builds and settings on this device?')){localStorage.removeItem('cc-save');location.reload()}};
